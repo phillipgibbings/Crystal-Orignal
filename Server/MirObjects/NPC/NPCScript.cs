@@ -25,7 +25,12 @@ namespace Server.MirObjects
 
         public static NPCScript GetOrAdd(uint loadedObjectID, string fileName, NPCScriptType type)
         {
-            var script = Envir.Scripts.SingleOrDefault(x => x.Value.FileName.Equals(fileName, StringComparison.OrdinalIgnoreCase) && x.Value.LoadedObjectID == loadedObjectID).Value;
+            // Reuse scripts by filename + type across restarts and NPC instances.
+            // Using LoadedObjectID here would create a new script per NPC or restart and leak memory.
+            var script = Envir.Scripts
+                .Where(x => x.Value.Type == type)
+                .Select(x => x.Value)
+                .FirstOrDefault(x => x.FileName.Equals(fileName, StringComparison.OrdinalIgnoreCase));
 
             if (script != null)
             {

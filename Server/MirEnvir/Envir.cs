@@ -1771,9 +1771,27 @@ namespace Server.MirEnvir
             }
 
             http?.Stop();
+            // release reference so the previous HTTP server can be GC'd on restart
+            http = null;
 
             while (_thread != null)
                 Thread.Sleep(1);
+
+            // After worker thread joins, drop references to mob threads/queues
+            for (var i = 0; i < MobThreading.Length; i++)
+            {
+                try
+                {
+                    if (MobThreads[i] != null)
+                    {
+                        MobThreads[i].ObjectsList.Clear();
+                        MobThreads[i]._current = null;
+                        MobThreads[i] = null;
+                    }
+                }
+                catch { }
+                MobThreading[i] = null;
+            }
         }
 
         public void Reboot()
@@ -1921,8 +1939,8 @@ namespace Server.MirEnvir
             bool useAnyForAll = false;
             try
             {
-                _listener = new TcpListener(bindAddress, Settings.Port);
-                _listener.Start();
+            _listener = new TcpListener(bindAddress, Settings.Port);
+            _listener.Start();
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.AddressNotAvailable)
             {
@@ -1985,6 +2003,11 @@ namespace Server.MirEnvir
         {
             SaveGoods(true);
 
+            // proactively dispose maps to release large arrays before clearing
+            for (var i = 0; i < MapList.Count; i++)
+            {
+                try { MapList[i]?.Dispose(); } catch { }
+            }
             MapList.Clear();
             StartPoints.Clear();
             StartItems.Clear();
@@ -1992,10 +2015,26 @@ namespace Server.MirEnvir
             Players.Clear();
             Heroes.Clear();
             GTMapList.Clear();
+            // clear runtime objects that hold references into maps/infos
+            NPCs.Clear();
+            Guilds.Clear();
+            Conquests.Clear();
+            // clear script/timer registries so scripts/timers don't accumulate across restarts
+            Scripts.Clear();
+            Timers.Clear();
+            // clear robot schedules parsed from scripts
+            Robot.Clear();
+            // drop references to singletons created during startup
+            DefaultNPC = null;
+            MonsterNPC = null;
+            RobotNPC = null;
+            DragonSystem = null;
 
             CleanUp();
 
-            GC.Collect();
+            // Encourage full GC and LOH compaction between stop/start cycles
+            try { System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce; } catch { }
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
 
             MessageQueue.Enqueue("Envir Stopped.");
         }
@@ -2043,6 +2082,11 @@ namespace Server.MirEnvir
 
 
             StatusConnections.Clear();
+            // clear network-related transient state
+            ConnectionLogs.Clear();
+            IPBlocks.Clear();
+            _listener = null;
+            _StatusPort = null;
             MessageQueue.Enqueue("Network Stopped.");
         }
 

@@ -46,6 +46,43 @@ namespace Server.MirEnvir
             Thread = Envir.Random.Next(Settings.ThreadLimit);
         }
 
+        public void Dispose()
+        {
+            try
+            {
+                // break references to heavy structures and cross-links
+                if (Respawns != null)
+                {
+                    for (int i = 0; i < Respawns.Count; i++)
+                    {
+                        var r = Respawns[i];
+                        if (r == null) continue;
+                        r.Route?.Clear();
+                        r.Route = null;
+                        r.WalkableCells?.Clear();
+                        r.WalkableCells = null;
+                        r.Map = null;
+                    }
+                    Respawns.Clear();
+                }
+
+                NPCs?.Clear();
+                Spells?.Clear();
+                Players?.Clear();
+                ActionList?.Clear();
+                Heroes?.Clear();
+                Conquest?.Clear();
+                Doors?.Clear();
+
+                // release large arrays and collections
+                Cells = null;
+                DoorIndex = null;
+                WalkableCells = null;
+                Mine = null;
+            }
+            catch { }
+        }
+
         public Door AddDoor(byte DoorIndex, Point location)
         {
             DoorIndex = (byte)(DoorIndex & 0x7F);
